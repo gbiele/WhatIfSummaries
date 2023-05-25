@@ -42,8 +42,8 @@ If the potential outcomes are independent of the treatment, we say the the treat
 ## Exchangebility
 
 - is an assumption that we need to calculate treatment as $ATE$s
-- the assumption can not be verified, but randomization produces exchangeability (more likely with larger sample size)
 - if we can justify this assumption, we can calculate treatment effects as the difference in the average outcome of the treated and the untreated.
+- the assumption cannot be verified, but randomization produces exchangeability
 
 ## Randomization in action
 
@@ -68,7 +68,7 @@ for (N in c(50, 100, 500, 1000)) {
 ```
 
 Randomization insures exchangeability for large N, or on average for many experiments.
-For small N experiments exchangeability is an unverifiable assumptions!
+For small N experiments exchangeability is only an unverifiable assumptions!
 
 
 ## Conditional exchangeability
