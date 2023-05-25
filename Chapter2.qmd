@@ -1,0 +1,78 @@
+---
+title: "Chapter 2"
+format:
+  revealjs:
+    embed-resources: true
+---
+
+## Randomization
+
+- When subjects are assigned to one of several groups with help of a random device we call this random allocation.
+- This is useful not because this "balances" the group with respect to known covariates
+- Instead, it insures that the expected outcome of the two groups would be the same, if they were to receive the same treatment
+  - If this is the case, we call the groups exchangeable
+  
+The fundament of causal inference rests is not balance, but exchangeability of the treatment groups
+
+## Notation
+
+- $\small Y^a$: The *potential outcome* (not observed) under treatment $\small a$
+- $\small Pr[Y = 1| A = 1]$: The proportion of cases with the *observed outcome* 1, among those with the *observed treatment* 1.
+- $\small Pr[Y^a = 1| A = 0]$: The proportion with the *potential outcome for treatment* $\small a$ being $\small 1$ , among those with the *observed treatment* 0.
+
+## Exchangebility
+
+If we want to estimate the effect $\small A \rightarrow Y$ as
+
+$$\small \textrm{Effect} = Pr[Y = 1| A = 1] - Pr[Y = 1| A = 0]$$ 
+
+This requires that the *potential outcome* of treatment $\small a$, $Y^a$, is equal for those *observed* with ($\small A=1$) and without ($\small A=0$) treatment.
+
+$$\small Pr[Y^a=1|A=1] = Pr[Y^a=1|A=0]$$
+
+
+## Exchangebility
+
+If the potential outcomes are the same irrespective of the observed treatment ($\small Pr[Y^a=1|A=1] = Pr[Y^a=1|A=0]$), they are independent
+
+$$Y^a \perp A$$
+
+If the potential outcomes are independent of the treatment, we say the the treatment and the control group are *exchangeable* (wrt. to the potential outcomes) or that the treatment is *exogenous*.
+
+## Exchangebility
+
+- is an assumption that we need to calculate treatment as $ATE$s
+- the assumption can not be verified, but randomization produces exchangeability (more likely with larger sample size)
+- if we can justify this assumption, we can calculate treatment effects as the difference in the average outcome of the treated and the untreated.
+
+## Randomization in action
+
+Experiment with $\small Pr[Y^0, A=1] = 0.5, Pr[Y^1, A=1] = 0.8$
+
+```{r, fig.width=7, fig.height=2}
+par(mfrow = c(1,4), mar=c(3,3,2,1), mgp=c(2,.5,0), tck=-.015)
+for (N in c(50, 100, 500, 1000)) {
+  effect = c()
+  for (k in 1:5000) {
+    PO_Ya0 = sample(c(0,1), N, prob = c(0.5, 0.5), replace = TRUE)
+    PO_Ya1 = sample(c(0,1), N, prob = c(0.2, 0.8), replace = TRUE)
+    
+    idx_A1 = sample(c(TRUE,FALSE),N, replace = TRUE)
+    effect = c(effect,mean(PO_Ya1[idx_A1]) - mean(PO_Ya0[!idx_A1]))
+  }
+  hist(effect, main = paste0("N=",N), breaks = seq(-.3,.8, by = .02),
+       xlim = c(-.1,.7), xlab = "estimated effect", border = "NA")
+  abline(v = 0.3, col = "red", lwd = 1)
+  abline(v = 0, lty = 3)
+}
+```
+
+Randomization insures exchangeability for large N, or on average for many experiments.
+For small N experiments exchangeability is an unverifiable assumptions!
+
+
+## Conditional exchangeability
+
+## Standardization
+
+## Inverse probability weighting
