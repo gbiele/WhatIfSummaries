@@ -16,9 +16,9 @@ The fundament of causal inference rests is not balance, but exchangeability of t
 
 ## Notation
 
-- $\small Y^a$: The *potential outcome* (not observed) under treatment $\small a$
-- $\small Pr[Y = 1| A = 1]$: The proportion of cases with the *observed outcome* 1, among those with the *observed treatment* 1.
-- $\small Pr[Y^a = 1| A = 0]$: The proportion with the *potential outcome for treatment* $\small a$ being $\small 1$ , among those with the *observed treatment* 0.
+- $\small Y^a$: The *potential outcome* $\small Y$ (not observed) under treatment $\small a$
+- $\small Pr[Y = 1| A = 1]$: The proportion of cases with the *observed outcome* $\small Y=1$, among those with the *observed treatment* $\small A=1$.
+- $\small Pr[Y^a = 1| A = 0]$: The proportion with the *potential outcome for treatment* $\small Y^a$ being $\small 1$ , among those with the *observed treatment* $\small A = 0$.
 
 ## Exchangebility
 
@@ -71,8 +71,96 @@ Randomization insures exchangeability for large N, or on average for many experi
 For small N experiments exchangeability is only an unverifiable assumptions!
 
 
+## Conditional randomization
+
+- without any qualifier, randomization is assumed to mean *marginal randomization*: All units are randomized equally 
+<br> ($\small Pr[A=1|L=0] = Pr[A=1|L=1]$)
+- in *conditional randomization* different strata $\small L$ are randomized according to different randomization schemes 
+<br> ($\small Pr[A=1|L=0] \neq Pr[A=1|L=1]$)
+- when strata $L$ are have different potential outcomes, $\small Pr[Y^{a=0}=1 | L=0] \neq Pr[Y^{a=0}=1 | L=1]$, potential outcomes of the treated and untreated will not be equal under *conditional randomization*: $Y^a \not\perp A$
+  
+
 ## Conditional exchangeability
+
+In conditional randomization, exchangeability is holds within $\small L$
+
+$$\small Pr[Y^a=1|A=1,L=1] = Pr[Y^a=1|A=0,L=1]$$
+
+conditional randomization induces independence of potential outcomes and treatment in the strata:
+
+$$Y^a \perp A | L = 1 \textrm{ and } Y^a \perp A | L = 0$$
+
+or short
+
+$$Y^a \perp A | L$$ 
 
 ## Standardization
 
+Calculate average risk in treatments, then effects
+
+:::: {.columns}
+::: {.column width="40%"}
+|      | $L=0$ | $L=1$ |
+|------|------|------|
+| $A=0$  |$\small 1/4$ | $\small 4/6$|
+| $A=1$  |$\small 2/4$ | $\small 4/6$|
+|      |$\tiny n=8$| $\tiny n=12$    |
+
+:::
+::: {.column width="60%"}
+$$
+\small RISK_{A=\color{Red}{1}} = 0.4\frac{2}{4}+0.6\frac{4}{6}=0.6 \\
+\small RISK_{A=\color{Red}{0}} = 0.4\frac{1}{4}+0.6\frac{4}{6}=0.5 \\
+\small ATE = 0.6/0.5 = 1.2
+$$
+:::
+::::
+
+Generally:
+$$
+\frac
+{\sum_l Pr[Y=1|L=l,A=\color{Red}{1}]Pr[L=l]}
+{\sum_l Pr[Y=1|L=l,A=\color{Red}{0}]Pr[L=l]}
+$$
+
+
+## Standardization?
+
+Calculate effects first in strata, then average effects
+
+|      | $L=0$ | $L=1$ |
+|------|------|------|
+| $A=0$  |$\small 1/4$ | $\small 4/6$|
+| $A=1$  |$\small 2/4$ | $\small 4/6$|
+|      |$\tiny n=8$| $\tiny n=12$    |
+
+$$
+\small ATE_{L=0} = \frac{2}{4}/\frac{1}{4}=2 \textrm{, }
+ATE_{L=1} = \frac{4}{6}/\frac{4}{6}=1 \\
+\small ATE = 0.4\cdot 2 + 0.6\cdot 1 = 1.4
+$$
+
+
 ## Inverse probability weighting
+
+|      | $L=0$ | $L=1$ |
+|------|------|------|
+| $A=0$  |$\small 1/4$ | $\small 4/6$|
+| $A=1$  |$\small 2/4$ | $\small 4/6$|
+|      |$\tiny n=8$| $\tiny n=12$    |
+
+$$
+\small Pr[Y^{a=0} = 1] = 2 \cdot 1 + 2 \cdot 4 = 10 \\
+\small Pr[Y^{a=1} = 1] = 2 \cdot 2 + 2 \cdot 4 = 12 \\
+\small ATE = 12 / 10 = 1.2
+$$
+
+## Inverse probability weighting 
+
+![Figure 2.3 from the book](figures/Tree_chapter2.PNG)
+
+::: {style="font-size: 70%;"}
+
+> Informally, the pseudo-population is created by weighting each individual in the population by the inverse of the conditional probability of receiving the treatment level that she indeed received.
+
+:::

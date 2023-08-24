@@ -1,0 +1,190 @@
+---
+title: "Chapter 6: Graphical presentation of causal effects"
+format:
+  revealjs:
+    embed-resources: true
+---
+
+## Causal directed acyclic graphs
+
+:::: {.columns}
+
+::: {.column width="60%"}
+1. Lack of arrow indicates absence of causal effect
+2. All causes, including unobserved, are in the DAG
+3. Any variable is a cause of its decedents
+
+:::
+
+::: {.column width="35%"}
+
+
+```{r }
+#| fig-align: center
+#| fig-height: 1
+#| fig-width: 3
+
+library(dagitty)
+par(mar=c(0,0,0,0))
+ex1 <- dagitty("dag {
+    X [exposure]
+    Y [outcome]
+    W []
+    Z -> X -> Y
+    X <- W -> Y
+}")
+coordinates(ex1) <- list( x=c(Z=0,X=1,Y=1,W=0) , y=c(Z=0,W=0.5,X=0,Y=1) )
+rethinking::drawdag( ex1 )
+
+```
+
+$$
+Y \perp Z \mid X, W
+$$
+<!-- $$ -->
+<!-- f(v) = \prod f(v_j|pa_j) -->
+<!-- $$ -->
+:::
+::::
+
+**Defining property**: "... conditional on its direct causes, any variable on the DAG is independent of any other variable for which it is not a cause."
+
+## DAGs and counterfactuals
+
+- Variables in DAGs are variables on which one can intervene, they can be set to specific values, i.e. to all potential realizations of a variable
+- That is, one ca set variables to possibly counterfactual, values, e.g. $x=0$ or $x=1$, which are used to describe potential outcomes $Y^0$ or $Y^1$
+- In nonparametetric structural equation models (SEM) we define "counterfactual worlds" by setting the values of the exogenous variables (to which no arrow leads) and & setting the values of children-variables given the values of the parents and the parent-child functions.
+
+
+## Causal diagrams and marginal independence
+
+
+- DAGs capture causation and association between variable $V$
+- A *Path* "connects variables by following a sequence of edges such that the route visits each $V$ no more than once"
+- *causal path*: has an arrow leading in & out of every $V$
+- *association path*: can include $V$s with only out-going edges.
+
+
+```{r}
+#| fig-align: center
+#| fig-height: 1
+#| fig-width: 3
+#| fig-format: pdf
+rethinking::drawdag( ex1 , col_arrow = c("red","red","green3","green3"))
+```
+
+## Flows of marginal association
+
+::: {#fig-flows layout-ncol=3}
+
+![**Fork**: When only S causes B and D, B and D will be correlated](C_dag_flow.gif)
+
+![**Mediator**: When X causes Y via M, X and Y will be correlated](M_flow.gif)
+
+![**Collider**: When K is caused by independent X and Y, X and Y are uncorrelated](collider_flow.gif)
+
+Association flows along all open paths
+:::
+
+"Two variables are *marginally associated* if one causes the other, or if they have a common cause."
+
+## Causal vs associative relationship
+
+- Causal relationship: <br> $\small Pr[Y^{a=1}=1] - Pr[Y^{a=0}=1]$ 
+- Associative relationship: $\small Pr[Y=1|A=1] - Pr[Y=1|A=0]$
+
+The difference between observed conditional probabilities is not the same as the difference between two counterfactuals.
+
+$$
+\tiny Pr[Y^{a=1}=1] - Pr[Y^{a=0}=1] \neq  Pr[Y=1|A=1] - Pr[Y=1|A=0]
+$$
+
+## Causal diagrams and conditional independence
+
+Does the association between two variables depend on the value of a third variable?
+
+```{r}
+#| fig-align: center
+#| fig-height: 2
+#| fig-width: 6
+#| out-height: 80%
+
+source("dag_utils.R")
+par(mfrow = c(1,2))
+C_dag = dagitty(
+  "dag{
+  X->M;
+  M->Y;
+  }")
+coord.list = 
+  list(
+    x=c(X=0,M=1,Y=2),
+    y=c(X=0,M=-1,Y=0))
+coordinates(C_dag) = coord.list
+drawmydag(C_dag)
+adjustedNodes(C_dag) = "M"
+drawmydag(C_dag)
+```
+
+Setting a variable to a value is the same as conditioning on that variable. Conditioning can open or close paths.
+
+## Flows of conditional association
+
+::: {#fig-flows layout-ncol=3}
+
+![**Conditioned fork**: When only S causes B and D and we fix S to a specific value, B and D will be **un**correlated](C_A_dag_flow.gif)
+
+![**Conditioned mediator**: When X causes Y via M and we fix M to a valye, X and Y will be **un**correlated](M_A_flow.gif)
+
+![**Conditioned collider**: When B is caused by independent E and I but we fix B, E and I are correlated due to their common effect.](Cl_A_dag_flow.gif)
+
+Association flows along all open paths
+:::
+
+
+## d-separation^[‘d-’ stands for directional]
+
+> A path is blocked if and only if it contains a non-collider that has been conditioned on, or it contains a collider that has not been conditioned on and has no descendants that have been conditioned on. Two variables are d-separated if all paths between them are blocked (otherwise they are d-connected).
+
+## Conditioniong and biases
+
+Conditioning on a ...
+
+- ... common cause^[or its parent, whereby effect will be weaker the weaker the effect of the variable on the descendant is.] of treatment & outcome **removes** confounding bias^[due to lack of exchangeability]
+- ... mediator^1^ between treatment & outcome **introduces** bias
+- ... collider^1^ between treatment & outcome **introduces** selection bias^2^
+
+
+## Positvity in causal diagrams
+
+> Positivity is roughly translated into graph language as the condition that the arroes from causes of treatment $L$ to treatment $A$ are not deterministic
+
+```{r}
+#| fig-align: center
+#| fig-height: 1
+#| fig-width: 3
+
+source("dag_utils.R")
+par(mfrow = c(1,1))
+L_dag = dagitty(
+  "dag{
+  L->A;
+  A->Y;
+  }")
+coord.list = 
+  list(
+    x=c(L=0,A=1,Y=2),
+    y=c(L=0,A=0,Y=0))
+coordinates(L_dag) = coord.list
+drawmydag(L_dag)
+```
+
+$$
+a = f(l) + \epsilon
+$$
+
+## Consistency in causal diagrams
+
+- Well defined interventions: $A  \rightarrow Y$ corresponds to an unambiguous, specific intervention
+
+Treatment nodes are "special", in that edges into them must bot be deterministic (positivity) and edges out of them towards the outcome must reflect a consistent treatment
