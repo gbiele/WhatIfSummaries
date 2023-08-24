@@ -5,6 +5,44 @@ format:
     embed-resources: true
 ---
 
+```{r}
+if (!file.exists("M_flow.gif")) {
+  library(smoother)
+pipe = dagitty(
+  "dag{
+  X->M;
+  M->Y;
+  }")
+coord.list = 
+  list(
+    x=c(X=0,Y=2,M=1),
+    y=c(X=0,Y=0,M=-1))
+coordinates(pipe) = coord.list
+drawmydag(pipe)
+
+flow_dag(
+  pipe,
+  nodes = list(c("X","M"),
+               c("M","Y")),
+  arrow.col = "green3",
+  fn = "M_flow.gif",
+  animation = T)
+
+
+
+adjustedNodes(pipe) = "M"
+
+flow_dag(
+  pipe,
+  nodes = list(c("X","M")),
+  arrow.col = "red",
+  fn = "M_A_flow.gif",
+  animation = T)
+}
+```
+
+
+
 ## Causal directed acyclic graphs
 
 :::: {.columns}
