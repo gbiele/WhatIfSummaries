@@ -6,19 +6,21 @@ format:
     theme: [gb.css]
 ---
 
-## Data cannot speak for themselves 
+## Data cannot speak for themselves
 
-- causal effects are calculated as differences between conditional means for treatment levels
-- if the number of treatment levels is limited (dichotomous or categorical treatments) conditional means can be calculated without model directly from the data
-- if the number treatment levels is high direct calculations are impossible
-- in then we can use statistical models, which incorporate assumptions about the **type of relationship** between treatment level and outcome
-- we also need models when the treatment is binary, but stratification or adjustment variables are continuous or higher dimensional ^[Treatment and control group will e.g. not have pairs with matching sex, height, and weight]
+-   causal effects are calculated as differences between conditional means for treatment levels
+-   if the number of treatment levels is limited (dichotomous or categorical treatments) conditional means can be calculated without model directly from the data
+-   if the number treatment levels is high direct calculations are impossible
+-   then we can use statistical models, which incorporate assumptions about the **type of relationship** between treatment level and outcome
+-   we also need models when the treatment is binary, but stratification or adjustment variables are continuous or higher dimensional [^1]
+
+[^1]: Treatment and control group will, e.g., not have pairs with matching sex, height, and weight
 
 ## Parametric estimators of the conditional mean
 
-1. Assumption about the functional form (e.g. linear)
-2. Parameters govern the "expression" of the functional form
-  
+1.  Assumption about the functional form (e.g. linear: $y = \alpha + \beta x$)
+2.  Parameters ($\alpha$,$\beta$) govern the "expression" of the functional form
+
 ```{r}
 #| fig-align: center
 set.seed(125)
@@ -38,8 +40,8 @@ text(min(x),3,txt,pos = 4, cex = 2)
 
 ## Nonparametric estim. of the conditional mean
 
-- Nonparametric models do not assume a functional form 
-  - each conditional mean has its own "parameter"
+-   Nonparametric models do not assume a functional form
+    -   each conditional mean has its own "parameter"
 
 ```{r}
 #| fig-align: center
@@ -63,9 +65,9 @@ points(.05+1:n_levels,p.f[,1], col = "blue",pch = 16, cex = 2)
 
 ## Smoothing
 
-- linear and non-parametric models are extremes on a continuum
-  - on one end the expected outcome for a treatment level depends on the outcomes observed at all treatment levels
-  - on the other end the expected outcome for a treatment level depends only on the outcomes observed at the focal treatment levels
+-   *linear and non-parametric models are extremes on a continuum*
+    -   on one end the expected outcome for a treatment level depends on the outcomes observed at all treatment levels
+    -   on the other end the expected outcome depends only on the outcomes observed at the focal treatment levels
 
 ```{r}
 #| fig-align: center
@@ -79,11 +81,13 @@ for (n in seq(1,25, by = 3)) {
   #if (n>2) {m = gam(y~s(x,k = n)); lines(x,predict(m))}
   m2 = lm(y~bs(x,degree = n))
   lines(x,predict(m2), col = "blue")
-  text(min(x),max(y),n, cex = 1.5)
+  text(min(x),max(y),n, cex = 2)
 }
 ```
 
 ## Non-linear relationships from "linear models"
+
+We can model non-linear relationships by using modified predictors for the linear model"
 
 ```{r}
 #| fig-align: center
@@ -99,6 +103,8 @@ plot(x,-x + x^2*.2,type = "l", ylab = "y", ylim = c(-6,8.5)) ; title(expression(
 ```
 
 ## Modern statistics/ML estimates smoothness
+
+Penalized splines use a penalty term to discount the fit of flexible models
 
 ```{r}
 #| fig-align: center
@@ -118,7 +124,7 @@ for (n in c(10,20,100,250)) {
   lines(nd$xx,predict(m.g, newdata = nd), col = "blue", lwd = 2)
   if (n == 10) {
     legend("topleft", bty = "n",
-           legend = c("splines"),
+           legend = c("penlized splines"),
            lty = 1, lwd = 2,
            col = c("blue"))
   }
@@ -145,7 +151,7 @@ for (n in c(10,20,100,250)) {
   lines(nd$xx,predict(m.p, newdata = nd), col = "red", lwd = 2)
   if (n == 10) {
     legend("topleft", bty = "n",
-           legend = c("splines","polynomials"),
+           legend = c("penalized splines","polynomials"),
            lty = 1, lwd = 2,
            col = c("blue","red"))
   }
@@ -153,18 +159,132 @@ for (n in c(10,20,100,250)) {
 
 ```
 
-## The bias-variance trade-off
+## Bias-variance trade-off
+
+$$
+\begin{align}
+MSE &= \mathbb{E}[(y-\hat{y})^2] \\
+MSE &= bias + variance + \sigma^2 \\
+bias &= \mathbb{E}[y]-\mathbb{E}[\hat{y}] \\
+variance &= \mathbb{E}[(\mathbb{E}[\hat{y}]-\hat{y})^2]
+\end{align}
+$$
+
+-   $MSE$ = **total error**: <br> mean squared error between observed and predicted values
+-   $bias$ = difference between the true and predicted mean
+-   $variance$ = variability of predicted means over data samples
+
+## $Bias$-variance trade-off
+
+Difference between the true and predicted mean
+
+```{r}
+bx = 1:4
+x = sort(rep(bx,15))
+y = poly(x,2,raw = TRUE) %*% c(2,1) + rnorm(length(x))*2
+by = poly(bx,2,raw = TRUE) %*% c(2,1)
+m.l = lm(y~x)
+p.l = predict(m.l, newdata= data.frame(x = bx), interval = "confidence")
+m.f = lm(y~factor(x))
+p.f = predict(m.f, newdata= data.frame(x = bx), interval = "confidence")
+ylim = range(cbind(p.l,p.f))
+
+bp = function() {
+  par (mar=c(3,3,2,1), mgp=c(2,.7,0), tck=-.01, cex.lab = 1.5, cex.axis = 1.5)
+  layout(matrix(c(1,1,1,2),nrow = 1))
+  plot(x,y, pch = 16, col = "grey", ylim = ylim, xaxt = "n", cex = 1.5, bty = "l")
+  axis(1,at = 1:4)
+  points(-.05+bx,p.l[,1], pch = 16, col = "red", cex = 2)
+  points(.05+bx,p.f[,1], pch = 16, col = "blue", cex = 2)
+  points(bx,by, pch = 16, cex = 2)
+  legend("topleft", legend = c("y = 2x + x^2","y ~ factor(x)", "y ~ x"), col = c("black","blue","red"), pch = 16, cex = 2, bty = "n")
+}
+bp()
+plot(x[x==3],y[x==3], pch = 16, col = "grey", ylab = "y", xlab = "x", xaxt = "n", cex = 1.5, bty = "l")
+axis(1,at = 3)
+points(-.05+3,p.l[3,1], pch = 16, col = "red", cex = 2)
+points(.05+3,p.f[3,1], pch = 16, col = "blue", cex = 2)
+points(3,p.f[3,1], pch = 16, cex = 2)
+arrows(x0 = 3-.2,x1 = 3-.2,y0 = p.f[3,1], y1 = p.l[3,1], length = 1/15, lwd = 3, code = 3, angle=90)
+text(3-.2,mean(c(p.f[3,1],p.l[3,1])), "Bias", pos = 2, cex = 2)
+```
+
+## Bias-$variance$ trade-off
+
+Variability (standard error) of predicted means over samples.
+
+```{r}
+par (mar=c(3,3,2,1), mgp=c(2,.7,0), tck=-.01, cex.lab = 1.5, cex.axis = 1.5)
+layout(matrix(c(1,1,1,2),nrow = 1))
+
+bp()
+
+plot(x[x==3],y[x==3], pch = 16, col = "grey", ylab = "", xlab = "x", 
+     ylim = range(c(p.l[3,],p.f[3,])), xaxt = "n", cex = 1.5, bty = "l")
+axis(1,at = 3)
+points(-.1+3,p.l[3,1], pch = 16, col = "red", cex = 2)
+points(.1+3,p.f[3,1], pch = 16, col = "blue", cex = 2)
+arrows(x0 = -.1+3, y0 = p.l[3,2],y1 = p.l[3,3], length = 0, col = "red", lwd = 3)
+arrows(x0 = .1+3, y0 = p.f[3,2],y1 = p.f[3,3], length = 0, col = "blue", lwd = 3)
+points(3,p.f[3,1], pch = 16, cex = 1)
+arrows(x0 = -.3+3, y0 = p.l[3,2],y1 = p.l[3,3], length = 1/10, lwd = 3, code = 3, angle=90)
+arrows(x0 = .3+3, y0 = p.f[3,2],y1 = p.f[3,3], length = 1/10, lwd = 3, code = 3, angle=90)
+text(3,max(c(p.l[3,],p.f[3,])), "Variance", pos = 3, cex = 2, xpd = TRUE, bg = "white")
+```
+
+## Bias-variance trade-off
+
+```{r}
+#| fig-height: 4
+#| fig-width: 4
+#| fig-align: center
+var.l = predict(m.l, newdata= data.frame(x = bx), se.fit = TRUE)$se.fit
+var.f = predict(m.f, newdata= data.frame(x = bx), se.fit = TRUE)$se.fit
+bias.l = (by-predict(m.l, newdata= data.frame(x = bx)))^2
+bias.f = (by-predict(m.f, newdata= data.frame(x = bx)))^2
+
+par (mar=c(3,3,2,1), mgp=c(2,.7,0), tck=-.01, cex.lab = 1.25, cex.axis = 1.25)
+plot(c(var.f,var.l),c(bias.f,bias.l), cex = .1,
+     col = sort(rep(c("blue","red"),4)), xlim = c(.25,.45),
+     pch = 16, ylab = "Bias",xlab = "Variance")
+text(c(var.f,var.l),c(bias.f,bias.l), cex = 1, labels = paste0("x=",bx),
+     col = sort(rep(c("blue","red"),4)))
+legend("topleft", legend = c("y ~ factor(x)", "y ~ x"), 
+       col = c("blue","red"), pch = 16, cex = 1, bty = "n")
+```
+
+## Identifying the "right" model
+
+-   the use of machine learning in causal inference is built on the idea the flexible ML models can reduce bias, while avoiding high variance
+-   personally, I doubt that using ML models out of the box (without expertedly tuning hyper parameters) is the best path to finding the "best" model
+-   instead, combining domain knowledge with fitting flexible regularized models and state of the are model comparison or model averaging are provide better guarantees to identify models that neither over- nor underfit the data.
 
 ## The generalised linear model
 
-- Different types of data require different likelihood functions
-  - distributions that describe data from different processes
-- The means of some likelihood functions are restricted, which required link functions
+-   Different types of data require different likelihood functions
+    -   distributions that describe data from different (partially) random processes
+-   The means of some likelihood functions are restricted, which required link functions
 
 ## Logistic regression for binary outcomes
+::: columns
+::: {.column width="50%"}
+linear model:
 
-**Binomial** likelihood function + **logistic** link function
+$lp_i = \alpha + \beta_1 x_i + \beta_2 x_i^2 + ...$
 
+**restriction** 
+
+$0 < p < 1$ 
+
+**logistic** link function:
+
+$p_i = exp(lp_i) / (1 + exp(lp_i))$
+
+**Binomial** likelihood
+$L_i = binomial(y_i, p_i)$
+:::
+
+::: {.column width="50%"}
 ```{r}
 #| fig-align: center
 #| fig-width: 5
@@ -177,11 +297,31 @@ probability = boot::inv.logit(linear_predictor)
 plot(linear_predictor, probability, ylim = c(0,1), pch = 16)
 abline(h = c(0,1), col = "red")
 ```
+:::
+:::
 
-## Poisson regression for count
 
-**Poisson** likelihood function + **log** link function
+## Poisson regression for counts
 
+::: columns
+::: {.column width="50%"}
+linear model:
+
+$lp_i = \alpha + \beta_1 x_i + \beta_2 x_i^2 + ...$
+
+**restriction**
+
+$\mu \geq 0$ 
+
+**log** link function:
+
+$\mu_i = exp(lp_i)$
+
+**Poisson** likelihood
+$L_i = poisson(y_i, \mu_i)$
+:::
+
+::: {.column width="50%"}
 ```{r}
 #| fig-align: center
 #| fig-width: 5
@@ -194,3 +334,8 @@ count = exp(linear_predictor)
 plot(linear_predictor, count, pch = 16)
 abline(h = c(0), col = "red")
 ```
+:::
+:::
+
+
+
