@@ -1,0 +1,15 @@
+
+// headings
+$presentation-heading-font: Calibri;
+
+$font-family-sans-serif:	Calibri, Calibri;
+$presentation-heading-font-weight: 300;
+$presentation-font-size-root: 35px;
+
+/*-- scss:rules --*/
+
+.reveal .slide blockquote {
+  border-left: 3px solid $text-muted;
+  padding-left: 0.5em;
+}
+

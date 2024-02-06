@@ -1,0 +1,328 @@
+---
+title: "Chapters 12-14: IP weighting, Standardization and G-estimation"
+format:
+  revealjs:
+    embed-resources: true
+    theme: [gb.css]
+---
+
+## Associational and Causal difference
+
+- we want $E[Y^{a=1}] - E[Y^{a=0}]$
+- but only observe $E[Y|A=1] - E[Y|A=0]$
+
+To estimate the causal effect, the difference between the potential outcomes, we need to account for confounding.
+
+
+## Adjusting for confounding
+
+1. IP weighting: Create a pseudo-population in which the weights of those with a low treatment probability[^1] are higher and calculate the causal effect in the pseudo population.
+2. Standardization: Calculate the causal effect in sub-groups of the population with different treatment probabilities^1^ and that compute the weighted average over sub-groups.
+3. G-estimatoin: 
+
+[^1]: Treatment probabilities depend on confounders.
+
+## IP weighting
+
+> Informally, the pseudo-population is created by weighting each individual by the inverse (reciprocal) of the conditional probability of receiving the treatment level that she indeed received. The individual-specific IP weights for treatment $A$ are defined as $W^A = 1/f (A|L)$
+
+## IP weighting: Treatment model
+
+::: columns
+::: {.column width="55%"}
+```{r, echo=TRUE}
+library(data.table)
+library(magrittr)
+nhefs = fread("nhefs.csv")
+nhefs$cens = 
+  ifelse(is.na(nhefs$wt82), 1, 0)
+treatment_model = 
+  qsmk ~ 
+  sex + race + age + I(age ^ 2) +
+  as.factor(education) + smokeintensity +
+  I(smokeintensity ^ 2) + smokeyrs + 
+  I(smokeyrs ^ 2) + as.factor(exercise) + 
+  as.factor(active) + wt71 + I(wt71 ^ 2)
+fit = glm(
+  treatment_model,
+  family = binomial(),
+  data = nhefs
+)
+```
+:::
+
+::: {.column width="45%"}
+```{r}
+#| fig-height: 8
+hist(predict(fit, type = "response"), main = "")
+```
+
+:::
+:::
+
+
+## IP weighting: Calculating weights
+
+::: columns
+::: {.column width="55%"}
+```{r, echo=TRUE}
+p.qsmk.obs <-
+  ifelse(nhefs$qsmk == 0,
+         1 - predict(fit, type = "response"),
+         predict(fit, type = "response"))
+nhefs$w <- 1 / p.qsmk.obs
+```
+:::
+
+::: {.column width="45%"}
+```{r}
+#| fig-height: 8
+hist(nhefs$w, main = "", cex = 12,breaks = seq(0,17, by = .25))
+```
+
+:::
+:::
+
+
+## Stabalized weights 
+
+> weights are $Pr[A = 1] /f (A|L)$ for the treated and $Pr[A = 0] /f (A|L)$ for the untreated or
+
+$$
+sw = \frac{Pr[A=a]}{Pr[A|L]}
+$$
+
+::: columns
+::: {.column width="50%"}
+$Pr[A=a]$
+```{r, echo=TRUE}
+numer.fit <- 
+  glm(qsmk ~ 1, 
+      family = binomial(),
+      data = nhefs)
+pn.qsmk <- 
+  predict(numer.fit, type = "response")
+```
+:::
+
+::: {.column width="50%"}
+$P[A|L]$
+```{r, echo=TRUE}
+denom.fit <-
+  glm(
+  treatment_model,
+  family = binomial(),
+  data = nhefs
+)
+pd.qsmk <- 
+  predict(denom.fit, type = "response")
+```
+:::
+:::
+
+## IP weighting: Calculating stabalized weights
+
+::: columns
+::: {.column width="50%"}
+$sw = \frac{Pr[A=a]}{Pr[A|L]}$
+```{r, echo=TRUE}
+nhefs$sw <-
+  ifelse(nhefs$qsmk == 0, 
+         ((1 - pn.qsmk) / (1 - pd.qsmk)),
+         (pn.qsmk / pd.qsmk))
+```
+```{r}
+#| fig-height: 8
+hist(nhefs$sw, main = "", cex = 12, breaks = seq(0,17, by = .25))
+```
+:::
+
+::: {.column width="50%"}
+```{r}
+#| echo: true
+#| fig-height: 8
+library(collapse)
+qsmk_by_edu = 
+  rbind(
+  fmean(nhefs$qsmk, g = nhefs$education),
+  fmean(nhefs$qsmk, g = nhefs$education,
+        w = nhefs$sw)) %>% 
+  t() 
+matplot(qsmk_by_edu, xlab = "education")
+```
+:::
+:::
+
+## IP weighting: Effect estimation
+::: columns
+::: {.column width="50%"}
+```{r}
+#| echo: true
+msm = lm(
+  wt82_71 ~ qsmk,
+  data = nhefs)
+msm.w <- lm(
+  wt82_71 ~ qsmk,
+  data = nhefs,
+  weights = w,
+)
+msm.sw <- lm(
+  wt82_71 ~ qsmk,
+  data = nhefs,
+  weights = sw,
+)
+means = nhefs %>% 
+  .[, .(m = fmean(wt82_71, w = sw)),
+    by = qsmk]
+```
+:::
+
+::: {.column width="50%"}
+```{r}
+#| fig-height: 7
+#| echo: true
+coefs = 
+  rbind(coef(msm),
+        coef(msm.w), coef(msm.sw),
+        c(means$m[1], diff(means$m)))
+barplot(coefs,beside = TRUE)
+```
+
+
+
+:::
+:::
+
+
+## Marginal sructural models
+
+Marginal structural means model
+
+$$
+E[Y^a] = \beta_0 + \beta_1 a
+$$
+
+See [here](https://remlapmot.github.io/cibookex-r/ip-weighting-and-marginal-structural-models.html#program-12.4)
+for weights for continuous treatments.
+
+## IPW: Doubly robust methods
+
+> If the investigator chooses to include all variables L in the marginal 
+structural model, the stabilized weights $SW^A (L)$ equal 1 and IP weighting 
+is unnecessary because, under conditional exchangeability, the marginal 
+structural model is then the (unweighted) out come regression model that 
+serves to fully adjust for all confounding by $L$.
+
+- _augmented_ inverse probability weighting
+- uses confounders in 2 ways:
+  - in the treatment model
+  - as adjustment model in the outcome model
+  
+
+## Standardization
+
+> To compute the standardized mean outcome in the treated, we first compute the 
+mean outcomes in the treated in each stratum l of the confounders $L$, i.e., the
+conditional means $E[Y|A = 1, C = 0, L = l]$ in each of the strata $l$. 
+
+> The standardized mean in the treated is then the _weighted average of these 
+conditional means_ using as weights the prevalence of each value $l$ in the 
+study population, $Pr[L = l]$. 
+
+> The standardized mean in the uncensored untreated  is computed analogously 
+except that the $A = 1$ in the conditioning event is replaced by $A = 0$.
+
+## Bare bones standardisation
+
+```{r}
+#| echo: true
+brks = quantile(nhefs$age, probs = seq(0,1,by = 1/4))
+nhefs[, age.q := cut(age, breaks = brks)] 
+
+strat.outcome = 
+  nhefs %>% 
+  .[, .(m.qsmk0 = fmean(wt82_71[qsmk == 0]), # outcome in non-quitters
+        m.qsmk1 = fmean(wt82_71[qsmk == 1]), # outcome in quitters
+        N = .N),                             # N in stratum
+    by = .(sex, race, education,age.q)] %>%  # variables that define strata
+  .[, w := N/sum(N)] %>%                     # weights for strata
+  na.omit()                                  # remove strata with obs in only 1 condition
+
+head(strat.outcome)
+```
+```{r}
+#| echo: true
+fmean(strat.outcome$m.qsmk1,w = strat.outcome$w) -
+fmean(strat.outcome$m.qsmk0,w = strat.outcome$w)
+```
+
+This does not work if there are many strata!
+
+## Standardization: Mean estimation
+
+> To obtain parametric estimates of $E[Y |A = a, C = 0, L = l]$ in each of the
+millions of strata defined by $L$, we fit a linear regression model for the mean
+weight gain with treatment $A$ and all 9 confounders in $L$ included as covariates.
+
+```{r}
+#| echo: true
+fit =
+  glm(
+    wt82_71 ~ qsmk + sex + race + age + I(age * age) + as.factor(education)
+    + smokeintensity + I(smokeintensity * smokeintensity) + smokeyrs
+    + I(smokeyrs * smokeyrs) + as.factor(exercise) + as.factor(active)
+    + wt71 + I(wt71 * wt71) + qsmk * smokeintensity,
+    data = nhefs
+  )
+
+```
+
+## Standardization: Prediction
+
+Generate a base-data set for predictions
+```{r}
+#| echo: true
+newdata = 
+  nhefs[, .(N = .N),
+        by = .(qsmk, sex, race, age, education, smokeintensity, 
+           smokeyrs, exercise, active, wt71)]
+```
+```{r}
+newdata
+```
+
+## Prediction
+
+Obtain predicted outcomes for each individual under $A = 0$ and $A = 1$:
+
+```{r}
+#| echo: true
+pred_A0 = predict(fit, newdata = newdata[, qsmk := 0])
+pred_A1 = predict(fit, newdata = newdata[, qsmk := 1])
+```
+
+```{r}
+r = range(c(pred_A0,pred_A1)) + c(-.1,.1)
+brks = seq(r[1],r[2], length.out = 21)
+hist(pred_A0, breaks = brks, col = adjustcolor("blue",alpha = .5), main = "", ylab = "wheigt change")
+hist(pred_A1, breaks = brks, col = adjustcolor("red",alpha = .5), add = TRUE)
+legend("topleft", 
+       fill = c(adjustcolor("blue",alpha = .5),
+                adjustcolor("red",alpha = .5)),
+       legend = c("non-quitters","quitters"),
+       bty = "n")
+```
+
+
+## Standardization by averaging
+
+- We average over individuals. 
+- This respects the distribution of covariates in the sample, because all 
+individuals together produce the (multivariate)  distribution of confounders $L$.
+
+```{r}
+#| echo: true
+E_A0 = mean(pred_A0)
+E_A1 = mean(pred_A1)
+E_A1-E_A0
+```
