@@ -6,7 +6,7 @@ format:
     theme: [gb.css]
 ---
 
-## Associational and Causal difference
+## Associational and causal difference
 
 - we want $E[Y^{a=1}] - E[Y^{a=0}]$
 - but only observe $E[Y|A=1] - E[Y|A=0]$
@@ -19,13 +19,15 @@ To estimate the causal effect, the difference between the potential outcomes, we
 
 1. IP weighting: Create a pseudo-population in which the weights of those with a low treatment probability[^1] are higher and calculate the causal effect in the pseudo population.
 2. Standardization: Calculate the causal effect in sub-groups of the population with different treatment probabilities^1^ and that compute the weighted average over sub-groups.
-3. G-estimation: ^[adjusts only for confounding, but can be combined with IP weighting to adjust for selection bias]
+3. G-estimation^[Adjusts only for confounding, but can be combined with IP weighting to adjust for selection bias]:  Estimate the causal effect in a treatment model by using the changeability assumption and finding the effect value under which treatment is independent of the effect value. 
 
 [^1]: Treatment probabilities depend on confounders.
 
 ## IP weighting
 
-> Informally, the pseudo-population is created by weighting each individual by the inverse (reciprocal) of the conditional probability of receiving the treatment level that she indeed received. The individual-specific IP weights for treatment $A$ are defined as $W^A = 1/f (A|L)$
+> Informally, the pseudo-population is created by weighting each individual by the inverse of the conditional probability of receiving the treatment level _that she indeed received_. The individual-specific IP weights for treatment $A$ are defined as $W^A = 1/f (A|L)$
+
+$f (A|L)$ can be a simple regression model.
 
 ## IP weighting: Treatment model
 
@@ -74,6 +76,8 @@ ghist(treatment_probability,"treatment probability (f(A|L))")
 
 ## IP weighting: Calculating weights
 
+> inverse of the conditional [estimated] probability of receiving the treatment level _that she indeed received_ 
+
 ::: columns
 ::: {.column width="55%"}
 ```{r, echo=TRUE}
@@ -96,17 +100,19 @@ ghist(nhefs$w,"w")
 :::
 
 
-## Stabalized weights 
+## Stabelized weights 
 
-> weights are $Pr[A = 1] /f (A|L)$ for the treated and $Pr[A = 0] /f (A|L)$ for the untreated or
+Extreme weights can lead to larger standard errors.
+
+> weights are $\textrm{Pr}[A = 1] /f (A|L)$ for the treated and $\textrm{Pr}[A = 0] /f (A|L)$ for the untreated or
 
 $$
-sw = \frac{Pr[A=a]}{Pr[A|L]}
+sw = \frac{\textrm{Pr}[A=a]}{\textrm{Pr}[A|L]}
 $$
 
 ::: columns
 ::: {.column width="50%"}
-$Pr[A=a]$
+$\textrm{Pr}[A=a]$
 ```{r, echo=TRUE}
 numer.fit = glm(
   qsmk ~ 1, 
@@ -137,7 +143,7 @@ nhefs[, p.den :=
 
 ::: columns
 ::: {.column width="50%"}
-$sw = \frac{Pr[A=a]}{Pr[A|L]}$
+$sw = \frac{\textrm{Pr}[A=a]}{\textrm{Pr}[A|L]}$
 ```{r, echo=TRUE}
 nhefs %>% 
   .[qsmk==1, sw:=(p.num)/(p.den)] %>% 
@@ -174,27 +180,27 @@ quit_by_edu %>%
 :::
 
 ## IP weighting: Effect estimation
+
+Simply use IP weights in a regression model, no covariates needed!
+
 ::: columns
-::: {.column width="50%"}
+::: {.column width="55%"}
 ```{r}
 #| echo: true
-# linear model without weights
+# lm without weights
 msm = lm(
   wt82_71 ~ qsmk,
   data = nhefs)
-
-# linear model with weights
+# lm with weights
 msm.w = lm(
   wt82_71 ~ qsmk,
   data = nhefs,
   weights = w)
-
-# linear model with stabelised weights
+# lm with stabelised weights
 msm.sw = lm(
   wt82_71 ~ qsmk,
   data = nhefs,
   weights = sw)
-
 # difference of weighted means
 means = nhefs %>% 
   .[, .(m = fmean(wt82_71, w = sw)),
@@ -202,7 +208,7 @@ means = nhefs %>%
 ```
 :::
 
-::: {.column width="50%"}
+::: {.column width="45%"}
 ```{r}
 #| fig-height: 7
 #| echo: true
@@ -249,7 +255,7 @@ conditional means $E[Y|A = 1, C = 0, L = l]$ in each of the strata $l$.
 
 > The standardized mean in the treated is then the _weighted average of these 
 conditional means_ using as weights the prevalence of each value $l$ in the 
-study population, $Pr[L = l]$. 
+study population, $\textrm{Pr}[L = l]$. 
 
 > The standardized mean in the uncensored untreated  is computed analogously 
 except that the $A = 1$ in the conditioning event is replaced by $A = 0$.
@@ -290,7 +296,7 @@ This does not work if there are many strata!
 
 > To obtain parametric estimates of $E[Y |A = a, C = 0, L = l]$ in each of the
 millions of strata defined by $L$, we fit a linear regression model for the mean
-weight gain with treatment $A$ and all 9 confounders in $L$ included as covariates.
+weight gain with treatment $A$ and ... confounders $L$ included as covariates.
 
 ```{r}
 #| echo: true
@@ -310,16 +316,18 @@ outcome_model =
 
 ## Standardization: Prediction
 
-Generate a base-data set for predictions
+Generate data for predictions
 ```{r}
 #| echo: true
-newdata = 
-  nhefs[, .(N = .N),
-        by = .(qsmk, sex, race, age, education, smokeintensity, 
-           smokeyrs, exercise, active, wt71)]
+newdataA0 = nhefs %>% 
+  .[, .(sex, race, age, education, smokeintensity, smokeyrs, exercise, active, wt71)]
+newdataA0 = copy(newdataA0)[, qsmk := 0]
+newdataA1 = copy(newdataA0)[, qsmk := 1]
 ```
+
 ```{r}
-newdata
+head(newdataA0[, .(sex, race, age, education, smokeyrs, exercise, active, wt71, qsmk)])
+head(newdataA1[, .(sex, race, age, education, smokeyrs, exercise, active, wt71, qsmk)])
 ```
 
 ## Prediction
@@ -328,8 +336,8 @@ Obtain predicted outcomes for each individual under $A = 0$ and $A = 1$:
 
 ```{r}
 #| echo: true
-pred_qsmk0 = predict(outcome_model, newdata = newdata[, qsmk := 0])
-pred_qsmk1 = predict(outcome_model, newdata = newdata[, qsmk := 1])
+pred_qsmk0 = predict(outcome_model, newdataA0)
+pred_qsmk1 = predict(outcome_model, newdataA1)
 ```
 
 ```{r}
@@ -346,7 +354,7 @@ rbind(
 
 ## Standardisation by averaging
 
-- We average over individuals. 
+- We average over all individuals in the data set, without weights.
 - This respects the distribution of covariates in the sample, because all 
 individuals together produce the (multivariate)  distribution of confounders $L$.
 
@@ -362,7 +370,7 @@ E_qsmk1-E_qsmk0
 
 - Are only the same when they are estimated without model (or with a non-parametric model)
 - Model-based estimates will differ, because the models estimate different things:
-  - IPW: $Pr[A=a|L]$
+  - IPW: $\textrm{Pr}[A=a|L]$
   - Standardisation: $E[Y|A=a,L=l]$
 - When IPW and standardization lead to different results, this points to misspecification of either of the models
   - parametric form
@@ -413,20 +421,22 @@ AIPW_SL = AIPW$new(
 
 ## Exchangeability revisited
 
-Definition: Treatment value is independent of potential outcomes
+Definition: Treatment value is independent of potential outcomes, it must be independent of what the outcome had been without the treatment.
+
 $$
-\textrm{Pr}[A=1|Y^{a=0},L] = Pr[A=1|L]
+\textrm{Pr}[A=1|Y^{a=0},L] = \textrm{Pr}[A=1|L]
 $$
 
 If conditional probability holds, $\alpha_1$ in the following structural model should be zero
 
 $$
 \textrm{logit Pr}  [A=1|Y^{a=0},L] = \alpha_0 + \alpha_1 Y^{a=0} + \alpha_2L
-$$
+$$^[This is just a different way to decribe a logistic regression]
+
 
 ## Structural nested mean models
 
-Under exchangeability ($\small Pr[A=1|Y^{a=0},L] = Pr[A=1|L]$): 
+Under exchangeability 
 $$
 E[Y^a-Y^{a=0}|A=a,L] = \beta_1 a + \beta_2 aL
 $$
@@ -452,7 +462,7 @@ $\small Y^a_i - Y^{a=0} = \psi_1a + \psi_2aLi$ where $\small \psi_1$ is the cons
 #| fig-width: 7
 #| fig-height: 4
 par (mar=c(3,3,2,1), mgp=c(1,.7,0), tck=-.01)
-curve(dnorm(x),-3,5, xlab = "density", ylab = "", xaxt = "n", yaxt = "n", bty = "n")
+curve(dnorm(x),-3,5, ylab = "density", xlab = "weight change", xaxt = "n", yaxt = "n", bty = "n")
 axis(1, at = c(-10,10))
 axis(2, at = c(-10,10))
 curve(dnorm(x, mean = 2), add = TRUE, col = "red")
@@ -498,10 +508,10 @@ Note that $\psi_1$ __is the treatment effect!__
 
 ## G-estimation (III)
 
-2. To learn the value of $\psi_1$ we exploit that under exchangeability the treatment should be independent of the potential outcomes
+2. To learn the value of $\psi_1$ we exploit that under exchangeability the treatment should be independent of the potential outcomes, it should be independent of what the outcome had been without the treatment.
 
 $$
 \textrm{logit Pr}  [A=1|Y^{a=0},L] = \alpha_0 + \color{red}{\alpha_1}\color{blue}{Y^{a=0}} + \alpha_2L
 $$
 
-That is, we need to find a value for $\color{blue}{Y^{a=0}}$ such that when we estimate the model $\color{red}{\alpha_1}$ becomes $0$.^[There are fancy ways to do this, but here the point is that we understand the idea of why we can estimate a type of treatment model to get the value of the treatment effect.]
+That is, we need to find a value for $\color{blue}{Y^{a=0}}$ such that when we estimate the model $\color{red}{\alpha_1}$ becomes $0$. We do this buy trying out (in a smart manner) different values for $\color{blue}{Y^{a=0}}$ for those that actually received treatment.^[There are fancy ways to do this, but here the point is that we understand the idea of why we can estimate a type of treatment model to get the value of the treatment effect.]
