@@ -14,11 +14,12 @@ format:
 To estimate the causal effect, the difference between the potential outcomes, we need to account for confounding.
 
 
-## Adjusting for confounding
+
+## Adjusting for confounding and selection bias
 
 1. IP weighting: Create a pseudo-population in which the weights of those with a low treatment probability[^1] are higher and calculate the causal effect in the pseudo population.
 2. Standardization: Calculate the causal effect in sub-groups of the population with different treatment probabilities^1^ and that compute the weighted average over sub-groups.
-3. G-estimatoin: 
+3. G-estimation: ^[adjusts only for confounding, but can be combined with IP weighting to adjust for selection bias]
 
 [^1]: Treatment probabilities depend on confounders.
 
@@ -36,25 +37,35 @@ library(magrittr)
 nhefs = fread("nhefs.csv")
 nhefs$cens = 
   ifelse(is.na(nhefs$wt82), 1, 0)
-treatment_model = 
+treatment_model_formula = 
   qsmk ~ 
   sex + race + age + I(age ^ 2) +
   as.factor(education) + smokeintensity +
   I(smokeintensity ^ 2) + smokeyrs + 
   I(smokeyrs ^ 2) + as.factor(exercise) + 
   as.factor(active) + wt71 + I(wt71 ^ 2)
-fit = glm(
-  treatment_model,
+treatment_model = glm(
+  treatment_model_formula,
   family = binomial(),
   data = nhefs
 )
+treatment_probability = 
+  predict(treatment_model,type = "response")
 ```
 :::
 
 ::: {.column width="45%"}
 ```{r}
 #| fig-height: 8
-hist(predict(fit, type = "response"), main = "")
+library(ggplot2)
+theme_set(theme_classic(base_size = 22))
+ghist = function(x,xlab) {
+  data.table(x = x) %>% 
+    ggplot(aes(x = x)) + 
+    geom_histogram(bins = 30) +
+    xlab(xlab)
+}
+ghist(treatment_probability,"treatment probability (f(A|L))")
 ```
 
 :::
@@ -66,18 +77,19 @@ hist(predict(fit, type = "response"), main = "")
 ::: columns
 ::: {.column width="55%"}
 ```{r, echo=TRUE}
-p.qsmk.obs <-
-  ifelse(nhefs$qsmk == 0,
-         1 - predict(fit, type = "response"),
-         predict(fit, type = "response"))
-nhefs$w <- 1 / p.qsmk.obs
+nhefs %>% 
+  .[, p_treat := 
+      predict(treatment_model,
+              type = "response")] %>% 
+  .[qsmk == 1, w := 1/p_treat] %>% 
+  .[qsmk == 0, w := 1/(1-p_treat)]
 ```
 :::
 
 ::: {.column width="45%"}
 ```{r}
 #| fig-height: 8
-hist(nhefs$w, main = "", cex = 12,breaks = seq(0,17, by = .25))
+ghist(nhefs$w,"w")
 ```
 
 :::
@@ -96,26 +108,27 @@ $$
 ::: {.column width="50%"}
 $Pr[A=a]$
 ```{r, echo=TRUE}
-numer.fit <- 
-  glm(qsmk ~ 1, 
-      family = binomial(),
-      data = nhefs)
-pn.qsmk <- 
-  predict(numer.fit, type = "response")
+numer.fit = glm(
+  qsmk ~ 1, 
+  family = binomial(),
+  data = nhefs)
+nhefs[, p.num := 
+        predict(numer.fit,
+                type = "response")]
 ```
 :::
 
 ::: {.column width="50%"}
 $P[A|L]$
 ```{r, echo=TRUE}
-denom.fit <-
-  glm(
+denom.fit = glm(
   treatment_model,
   family = binomial(),
   data = nhefs
 )
-pd.qsmk <- 
-  predict(denom.fit, type = "response")
+nhefs[, p.den := 
+        predict(denom.fit,
+                type = "response")]
 ```
 :::
 :::
@@ -126,30 +139,37 @@ pd.qsmk <-
 ::: {.column width="50%"}
 $sw = \frac{Pr[A=a]}{Pr[A|L]}$
 ```{r, echo=TRUE}
-nhefs$sw <-
-  ifelse(nhefs$qsmk == 0, 
-         ((1 - pn.qsmk) / (1 - pd.qsmk)),
-         (pn.qsmk / pd.qsmk))
+nhefs %>% 
+  .[qsmk==1, sw:=(p.num)/(p.den)] %>% 
+  .[qsmk==0, sw:=(1-p.num)/(1-p.den)]
 ```
+
 ```{r}
 #| fig-height: 8
-hist(nhefs$sw, main = "", cex = 12, breaks = seq(0,17, by = .25))
+ghist(nhefs$sw,"sw")
 ```
 :::
 
 ::: {.column width="50%"}
 ```{r}
 #| echo: true
-#| fig-height: 8
 library(collapse)
-qsmk_by_edu = 
-  rbind(
-  fmean(nhefs$qsmk, g = nhefs$education),
-  fmean(nhefs$qsmk, g = nhefs$education,
-        w = nhefs$sw)) %>% 
-  t() 
-matplot(qsmk_by_edu, xlab = "education")
+quit_by_edu = 
+  nhefs %>% 
+  .[, .(mean = fmean(qsmk),
+        w_mean = fmean(qsmk,w = sw)),
+    by = .(education)]
 ```
+```{r}
+#| fig-height: 8
+quit_by_edu %>% 
+  melt(id.vars = "education", value.name = "p_quitting") %>% 
+  .[, education := ordered(education)] %>% 
+  ggplot(aes(x = education, y = p_quitting, color = variable)) + 
+  geom_point(size = 5)
+  
+```
+
 :::
 :::
 
@@ -158,19 +178,24 @@ matplot(qsmk_by_edu, xlab = "education")
 ::: {.column width="50%"}
 ```{r}
 #| echo: true
+# linear model without weights
 msm = lm(
   wt82_71 ~ qsmk,
   data = nhefs)
-msm.w <- lm(
+
+# linear model with weights
+msm.w = lm(
   wt82_71 ~ qsmk,
   data = nhefs,
-  weights = w,
-)
-msm.sw <- lm(
+  weights = w)
+
+# linear model with stabelised weights
+msm.sw = lm(
   wt82_71 ~ qsmk,
   data = nhefs,
-  weights = sw,
-)
+  weights = sw)
+
+# difference of weighted means
 means = nhefs %>% 
   .[, .(m = fmean(wt82_71, w = sw)),
     by = qsmk]
@@ -182,19 +207,30 @@ means = nhefs %>%
 #| fig-height: 7
 #| echo: true
 coefs = 
-  rbind(coef(msm),
-        coef(msm.w), coef(msm.sw),
-        c(means$m[1], diff(means$m)))
-barplot(coefs,beside = TRUE)
+  data.table(
+    rbind(
+      coef(msm),
+      coef(msm.w), coef(msm.sw),
+      c(means$m[1], diff(means$m))))
+coefs$model = 
+  c("lm","lm.w","lm.sw","d.wm")
+```
+
+```{r}
+coefs %>% 
+  melt(id.vars = "model", variable.name = "parameter") %>% 
+  .[, model := factor(model,levels = c("lm","lm.w","lm.sw","d.wm"))] %>% 
+  ggplot(aes(x = parameter,y=value, fill = model)) + 
+  geom_bar(stat = "identity",position = position_dodge()) + 
+  geom_text(aes(label = round(value,2), y = value + .1), position = position_dodge(.9), size = 5)
 ```
 
 
-
 :::
 :::
 
 
-## Marginal sructural models
+## Marginal structural models
 
 Marginal structural means model
 
@@ -205,24 +241,10 @@ $$
 See [here](https://remlapmot.github.io/cibookex-r/ip-weighting-and-marginal-structural-models.html#program-12.4)
 for weights for continuous treatments.
 
-## IPW: Doubly robust methods
-
-> If the investigator chooses to include all variables L in the marginal 
-structural model, the stabilized weights $SW^A (L)$ equal 1 and IP weighting 
-is unnecessary because, under conditional exchangeability, the marginal 
-structural model is then the (unweighted) out come regression model that 
-serves to fully adjust for all confounding by $L$.
-
-- _augmented_ inverse probability weighting
-- uses confounders in 2 ways:
-  - in the treatment model
-  - as adjustment model in the outcome model
-  
-
 ## Standardization
 
 > To compute the standardized mean outcome in the treated, we first compute the 
-mean outcomes in the treated in each stratum l of the confounders $L$, i.e., the
+mean outcomes in the treated in each stratum $l$ of the confounders $L$, i.e., the
 conditional means $E[Y|A = 1, C = 0, L = l]$ in each of the strata $l$. 
 
 > The standardized mean in the treated is then the _weighted average of these 
@@ -258,6 +280,12 @@ fmean(strat.outcome$m.qsmk0,w = strat.outcome$w)
 
 This does not work if there are many strata!
 
+## Standardization steps
+
+- estimation
+- prediction
+- (weighted) averaging
+
 ## Standardization: Mean estimation
 
 > To obtain parametric estimates of $E[Y |A = a, C = 0, L = l]$ in each of the
@@ -266,12 +294,15 @@ weight gain with treatment $A$ and all 9 confounders in $L$ included as covariat
 
 ```{r}
 #| echo: true
-fit =
+outcome_model_formula = 
+  wt82_71 ~ 
+  qsmk + sex + race + age + I(age * age) + as.factor(education) +
+  smokeintensity + I(smokeintensity * smokeintensity) + smokeyrs +
+  I(smokeyrs * smokeyrs) + as.factor(exercise) + as.factor(active) +
+  wt71 + I(wt71 * wt71) + qsmk * smokeintensity
+outcome_model =
   glm(
-    wt82_71 ~ qsmk + sex + race + age + I(age * age) + as.factor(education)
-    + smokeintensity + I(smokeintensity * smokeintensity) + smokeyrs
-    + I(smokeyrs * smokeyrs) + as.factor(exercise) + as.factor(active)
-    + wt71 + I(wt71 * wt71) + qsmk * smokeintensity,
+    outcome_model_formula,
     data = nhefs
   )
 
@@ -297,24 +328,23 @@ Obtain predicted outcomes for each individual under $A = 0$ and $A = 1$:
 
 ```{r}
 #| echo: true
-pred_A0 = predict(fit, newdata = newdata[, qsmk := 0])
-pred_A1 = predict(fit, newdata = newdata[, qsmk := 1])
+pred_qsmk0 = predict(outcome_model, newdata = newdata[, qsmk := 0])
+pred_qsmk1 = predict(outcome_model, newdata = newdata[, qsmk := 1])
 ```
 
 ```{r}
-r = range(c(pred_A0,pred_A1)) + c(-.1,.1)
-brks = seq(r[1],r[2], length.out = 21)
-hist(pred_A0, breaks = brks, col = adjustcolor("blue",alpha = .5), main = "", ylab = "wheigt change")
-hist(pred_A1, breaks = brks, col = adjustcolor("red",alpha = .5), add = TRUE)
-legend("topleft", 
-       fill = c(adjustcolor("blue",alpha = .5),
-                adjustcolor("red",alpha = .5)),
-       legend = c("non-quitters","quitters"),
-       bty = "n")
+rbind(
+  data.table(prediction = pred_qsmk0, qsmk = "0"),
+  data.table(prediction = pred_qsmk1, qsmk = "1")
+) %>% 
+  ggplot(aes(x = prediction, fill = qsmk)) + 
+  geom_histogram(bins = 30, position = "identity", alpha = .5) + 
+  xlab("predicted weight change")
+
 ```
 
 
-## Standardization by averaging
+## Standardisation by averaging
 
 - We average over individuals. 
 - This respects the distribution of covariates in the sample, because all 
@@ -322,7 +352,156 @@ individuals together produce the (multivariate)  distribution of confounders $L$
 
 ```{r}
 #| echo: true
-E_A0 = mean(pred_A0)
-E_A1 = mean(pred_A1)
-E_A1-E_A0
+E_qsmk0 = mean(pred_qsmk0)
+E_qsmk1 = mean(pred_qsmk1)
+E_qsmk1-E_qsmk0
 ```
+
+
+## IPW or weighting?
+
+- Are only the same when they are estimated without model (or with a non-parametric model)
+- Model-based estimates will differ, because the models estimate different things:
+  - IPW: $Pr[A=a|L]$
+  - Standardisation: $E[Y|A=a,L=l]$
+- When IPW and standardization lead to different results, this points to misspecification of either of the models
+  - parametric form
+  - likelihood
+  - included variables ....
+  
+  
+## Doubly robust methods
+
+> If the investigator chooses to include all variables L in the marginal 
+structural model, the stabilized weights $SW^A (L)$ equal 1 and IP weighting 
+is unnecessary because, under conditional exchangeability, the marginal 
+structural model is then the (unweighted) out come regression model that 
+serves to fully adjust for all confounding by $L$.
+
+- _augmented_ inverse probability weighting (AIPW)
+- uses confounders in 2 ways:
+  - in the treatment model
+  - as adjustment model in the outcome model
+
+## Simple usage of a doubly robust method
+
+
+```{r}
+#| warning: false
+#| echo: true
+library(AIPW)
+library(SuperLearner)
+library(ggplot2)
+cov = c("sex","race","age", "education","smokeintensity","smokeyrs","exercise","wt71")
+SuperLearnerModels =  c("SL.mean","SL.glm", "SL.gam") # 
+# set up model
+AIPW_SL = AIPW$new(
+  Y = nhefs$wt82_71,                 # Outcome
+  A = nhefs$qsmk,                    # Exposure
+  W = subset(nhefs,select=cov),      # Covariates 
+  Q.SL.library = SuperLearnerModels, # super learner models for outcome
+  g.SL.library = SuperLearnerModels, # super learner models for treatment
+  k_split = 5,                       # cross validation split for SL
+  verbose=FALSE)
+
+#AIPW_SL$stratified_fit() # estimate models
+#AIPW_SL$summary() # calculate ATEs
+#print(AIPW_SL$result, digits = 2) # show results
+```
+
+# G-estimation
+
+## Exchangeability revisited
+
+Definition: Treatment value is independent of potential outcomes
+$$
+\textrm{Pr}[A=1|Y^{a=0},L] = Pr[A=1|L]
+$$
+
+If conditional probability holds, $\alpha_1$ in the following structural model should be zero
+
+$$
+\textrm{logit Pr}  [A=1|Y^{a=0},L] = \alpha_0 + \alpha_1 Y^{a=0} + \alpha_2L
+$$
+
+## Structural nested mean models
+
+Under exchangeability ($\small Pr[A=1|Y^{a=0},L] = Pr[A=1|L]$): 
+$$
+E[Y^a-Y^{a=0}|A=a,L] = \beta_1 a + \beta_2 aL
+$$
+
+- $\beta_2 aL$ allows for effect modification, i.e. variation of effects between strata $l$
+- differently than the outcome model for standardization^[marginal structural model $E[Y^a|L] = \beta_0  + \beta_1 a + \beta_2 aL + \beta_3 L$], this is a __model of differences in outcome__ 
+- therefore we have no intercept $\beta_0$ or main effect of $L$, $\beta_3$
+  - $\rightarrow$ fewer assumptions
+  
+## Rank preservation ^[Introduced for pedagogical reasons, even though estimators in the book do not require this assumption.]
+
+> When the effect of treatment A on the outcome Y is exactly the same,
+on the additive scale, for all individuals in the study population, we say that
+_additive rank preservation_ holds. ... For the purposes of structural nested mean models we
+will care about additive rank preservation within levels of L __conditional
+additive rank preservation__:
+
+$\small Y^a_i - Y^{a=0} = \psi_1a + \psi_2aLi$ where $\small \psi_1$ is the constant part of the causal effect and $\small \psi_2L$ varies between strata
+
+## Rank preservation
+
+```{r}
+#| fig-width: 7
+#| fig-height: 4
+par (mar=c(3,3,2,1), mgp=c(1,.7,0), tck=-.01)
+curve(dnorm(x),-3,5, xlab = "density", ylab = "", xaxt = "n", yaxt = "n", bty = "n")
+axis(1, at = c(-10,10))
+axis(2, at = c(-10,10))
+curve(dnorm(x, mean = 2), add = TRUE, col = "red")
+for (q in c(.3,.95)) {
+  x1 = qnorm(q); x2 = qnorm(q)+2
+  y1 = y2 = dnorm(qnorm(q))
+  points(c(x1,x2),c(y1,y2), pch = 16)
+  arrows(x1,y1,x2,y2, length = .1)
+  text(x1,y1,expression(Y[i]^{a==0}), pos = 3, cex = 1.25)
+  text(x2,y2,expression(Y[i]^{a==1}), pos = 3, cex = 1.25, col = "red")
+  text((x1+x2)/2,y2,expression(psi[1] + psi[2]*l), pos = 1, cex = 1.25, col = "blue3")
+}
+```
+
+## G-estimation (I)
+
+We want to estimate the simple __structural nested means model__
+
+$$
+E[Y^a-Y^{a=0}|A=a, L] = \beta_1a
+$$
+
+and assume rank preservation $\small Y^a_i - Y^{a=0}_i = \psi_1a$
+
+which we can also write as 
+$$
+\small 
+\begin{align}
+Y^a_i - Y^{a=0}_i &= \psi_1a \\
+- Y^{a=0}_i &= \psi_1a - Y^a_i \\
+Y^{a=0}_i &= Y^a_i - \psi_1a \\
+\end{align}
+$$
+
+## G-estimation (II)
+
+1. Link data to model by replacing counterfactual treatments $a$ with observed $A$: $\small  Y^{a=0}_i = Y^a_i - \psi_1A$
+2. Also replace counterfactual outcomes $Y^a$ with observed outcomes $Y$: $\small  Y^{a=0}_i = Y - \psi_1A$
+
+Rank preservation implies that $Y^{a=0}$ depends on observed data ($\small Y$, $\small A$) and unknown $\psi_1$: $Y^{a=0} = Y - \psi_1A$
+
+Note that $\psi_1$ __is the treatment effect!__
+
+## G-estimation (III)
+
+2. To learn the value of $\psi_1$ we exploit that under exchangeability the treatment should be independent of the potential outcomes
+
+$$
+\textrm{logit Pr}  [A=1|Y^{a=0},L] = \alpha_0 + \color{red}{\alpha_1}\color{blue}{Y^{a=0}} + \alpha_2L
+$$
+
+That is, we need to find a value for $\color{blue}{Y^{a=0}}$ such that when we estimate the model $\color{red}{\alpha_1}$ becomes $0$.^[There are fancy ways to do this, but here the point is that we understand the idea of why we can estimate a type of treatment model to get the value of the treatment effect.]
