@@ -23,11 +23,15 @@ To estimate the causal effect, the difference between the potential outcomes, we
 
 [^1]: Treatment probabilities depend on confounders.
 
+# IP weighting
+
 ## IP weighting
+
+Because exchangeability does not hold in the study sample, we create a pseudopopulation in which conditional exchangeability holds.
 
 > Informally, the pseudo-population is created by weighting each individual by the inverse of the conditional probability of receiving the treatment level _that she indeed received_. The individual-specific IP weights for treatment $A$ are defined as $W^A = 1/f (A|L)$
 
-$f (A|L)$ can be a simple regression model.
+$f (A|L)$ can be a simple regression model, often called the _treatment model_.
 
 ## IP weighting: Treatment model
 
@@ -76,21 +80,21 @@ ghist(treatment_probability,"treatment probability (f(A|L))")
 
 ## IP weighting: Calculating weights
 
-> inverse of the conditional [estimated] probability of receiving the treatment level _that she indeed received_ 
+> inverse of the conditional [estimated] probability of receiving the treatment level _that she indeed received_. 
 
 ::: columns
-::: {.column width="55%"}
+::: {.column width="60%"}
 ```{r, echo=TRUE}
 nhefs %>% 
   .[, p_treat := 
       predict(treatment_model,
               type = "response")] %>% 
-  .[qsmk == 1, w := 1/p_treat] %>% 
-  .[qsmk == 0, w := 1/(1-p_treat)]
+  .[qsmk == 1, w := 1/p_treat] %>%  # treated
+  .[qsmk == 0, w := 1/(1-p_treat)]  # untreated
 ```
 :::
 
-::: {.column width="45%"}
+::: {.column width="40%"}
 ```{r}
 #| fig-height: 8
 ghist(nhefs$w,"w")
@@ -102,7 +106,7 @@ ghist(nhefs$w,"w")
 
 ## Stabelized weights 
 
-Extreme weights can lead to larger standard errors.
+Non-stabilized weights can amplify the effect of extreme data points and result in estimates with larger standard error.
 
 > weights are $\textrm{Pr}[A = 1] /f (A|L)$ for the treated and $\textrm{Pr}[A = 0] /f (A|L)$ for the untreated or
 
@@ -130,8 +134,7 @@ $P[A|L]$
 denom.fit = glm(
   treatment_model,
   family = binomial(),
-  data = nhefs
-)
+  data = nhefs)
 nhefs[, p.den := 
         predict(denom.fit,
                 type = "response")]
@@ -139,7 +142,7 @@ nhefs[, p.den :=
 :::
 :::
 
-## IP weighting: Calculating stabalized weights
+## IP weighting: Calculating stabelised weights
 
 ::: columns
 ::: {.column width="50%"}
@@ -166,6 +169,7 @@ quit_by_edu =
         w_mean = fmean(qsmk,w = sw)),
     by = .(education)]
 ```
+
 ```{r}
 #| fig-height: 8
 quit_by_edu %>% 
@@ -178,6 +182,8 @@ quit_by_edu %>%
 
 :::
 :::
+
+__IPW "balances" treated and untreated only wrt. observed covariates!__
 
 ## IP weighting: Effect estimation
 
@@ -244,8 +250,12 @@ $$
 E[Y^a] = \beta_0 + \beta_1 a
 $$
 
+We estimate counterfactual outcomes for everyone.
+
 See [here](https://remlapmot.github.io/cibookex-r/ip-weighting-and-marginal-structural-models.html#program-12.4)
 for weights for continuous treatments.
+
+# Standardization
 
 ## Standardization
 
@@ -273,15 +283,15 @@ strat.outcome =
         m.qsmk1 = fmean(wt82_71[qsmk == 1]), # outcome in quitters
         N = .N),                             # N in stratum
     by = .(sex, race, education,age.q)] %>%  # variables that define strata
-  .[, w := N/sum(N)] %>%                     # weights for strata
-  na.omit()                                  # remove strata with obs in only 1 condition
+  .[, strat.wght := N/sum(N)] %>%            # weights for STRATA
+  na.omit()                                  
 
 head(strat.outcome)
 ```
 ```{r}
 #| echo: true
-fmean(strat.outcome$m.qsmk1,w = strat.outcome$w) -
-fmean(strat.outcome$m.qsmk0,w = strat.outcome$w)
+fmean(strat.outcome$m.qsmk1,w = strat.outcome$strat.wght) -
+fmean(strat.outcome$m.qsmk0,w = strat.outcome$strat.wght)
 ```
 
 This does not work if there are many strata!
@@ -294,7 +304,7 @@ This does not work if there are many strata!
 
 ## Standardization: Mean estimation
 
-> To obtain parametric estimates of $E[Y |A = a, C = 0, L = l]$ in each of the
+> To obtain parametric estimates of $E[Y |A = a, L = l]$ in each of the
 millions of strata defined by $L$, we fit a linear regression model for the mean
 weight gain with treatment $A$ and ... confounders $L$ included as covariates.
 
@@ -316,7 +326,7 @@ outcome_model =
 
 ## Standardization: Prediction
 
-Generate data for predictions
+Generate data for predictions under both treatment conditions.
 ```{r}
 #| echo: true
 newdataA0 = nhefs %>% 
@@ -366,16 +376,14 @@ E_qsmk1-E_qsmk0
 ```
 
 
-## IPW or weighting?
+## IPW or standardization?
 
 - Are only the same when they are estimated without model (or with a non-parametric model)
-- Model-based estimates will differ, because the models estimate different things:
-  - IPW: $\textrm{Pr}[A=a|L]$
-  - Standardisation: $E[Y|A=a,L=l]$
+- Model-based estimates can differ, in contrasts to non-parametric estimates, because the models estimate different things:
+  - _Treatment model_ for IPW: $\textrm{Pr}[A=a|L]$^[Does not need outcome model, because it is simply calculated as the differences of weighted means of observed outcomes!]
+  - _Outcome model_ for standardisation: $E[Y|A=a,L=l]$
 - When IPW and standardization lead to different results, this points to misspecification of either of the models
-  - parametric form
-  - likelihood
-  - included variables ....
+  - parametric form, likelihood, included variables ...
   
   
 ## Doubly robust methods
@@ -383,7 +391,7 @@ E_qsmk1-E_qsmk0
 > If the investigator chooses to include all variables L in the marginal 
 structural model, the stabilized weights $SW^A (L)$ equal 1 and IP weighting 
 is unnecessary because, under conditional exchangeability, the marginal 
-structural model is then the (unweighted) out come regression model that 
+structural model is then the (unweighted) outcome regression model that 
 serves to fully adjust for all confounding by $L$.
 
 - _augmented_ inverse probability weighting (AIPW)
@@ -412,10 +420,12 @@ AIPW_SL = AIPW$new(
   k_split = 5,                       # cross validation split for SL
   verbose=FALSE)
 
-#AIPW_SL$stratified_fit() # estimate models
-#AIPW_SL$summary() # calculate ATEs
-#print(AIPW_SL$result, digits = 2) # show results
+AIPW_SL$stratified_fit() # estimate models
+AIPW_SL$summary() # calculate ATEs
+print(AIPW_SL$result[1:3,], digits = 2) # show results
 ```
+
+Note the slightly different results!
 
 # G-estimation
 
